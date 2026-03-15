@@ -45,8 +45,23 @@ try {
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) 
                                ON DUPLICATE KEY UPDATE username=?, avatar=?, level=?, xp=?, nextLevelXp=?, age=?, favoriteGame=?, role=?');
         $stmt->execute([
-            $data['uid'], $data['username'], $data['avatar'], $data['level'], $data['xp'], $data['nextLevelXp'], $data['age'], $data['favoriteGame'], $data['role'],
-            $data['username'], $data['avatar'], $data['level'], $data['xp'], $data['nextLevelXp'], $data['age'], $data['favoriteGame'], $data['role']
+            $data['uid'],
+            $data['username'],
+            $data['avatar'],
+            $data['level'],
+            $data['xp'],
+            $data['nextLevelXp'],
+            $data['age'],
+            $data['favoriteGame'],
+            $data['role'],
+            $data['username'],
+            $data['avatar'],
+            $data['level'],
+            $data['xp'],
+            $data['nextLevelXp'],
+            $data['age'],
+            $data['favoriteGame'],
+            $data['role']
         ]);
         echo json_encode(['success' => true]);
     }
@@ -68,7 +83,13 @@ try {
         $data = json_decode(file_get_contents('php://input'), true);
         $stmt = $pdo->prepare('INSERT INTO games (userId, name, duration, date, xpEarned, levelAchieved, remark) VALUES (?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
-            $data['userId'], $data['name'], $data['duration'], $data['date'], $data['xpEarned'], $data['levelAchieved'], $data['remark']
+            $data['userId'],
+            $data['name'],
+            $data['duration'],
+            $data['date'],
+            $data['xpEarned'],
+            $data['levelAchieved'],
+            $data['remark']
         ]);
         echo json_encode(['success' => true]);
     }
@@ -83,7 +104,13 @@ try {
         $data = json_decode(file_get_contents('php://input'), true);
         $stmt = $pdo->prepare('INSERT INTO achievements (userId, achievementId, name, description, icon, unlocked, date) VALUES (?, ?, ?, ?, ?, ?, ?)');
         $stmt->execute([
-            $data['userId'], $data['achievementId'], $data['name'], $data['description'], $data['icon'], $data['unlocked'], $data['date']
+            $data['userId'],
+            $data['achievementId'],
+            $data['name'],
+            $data['description'],
+            $data['icon'],
+            $data['unlocked'],
+            $data['date']
         ]);
         echo json_encode(['success' => true]);
     }
@@ -91,8 +118,7 @@ try {
     elseif ($method === 'GET' && $parts[0] === 'leaderboard') {
         $stmt = $pdo->query('SELECT username, avatar, level, xp FROM users ORDER BY level DESC, xp DESC LIMIT 10');
         echo json_encode($stmt->fetchAll());
-    }
-    else {
+    } else {
         http_response_code(404);
         echo json_encode(['error' => 'Endpoint not found']);
     }
