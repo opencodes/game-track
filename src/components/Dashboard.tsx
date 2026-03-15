@@ -8,21 +8,24 @@ import {
 
 export const Dashboard: React.FC = () => {
   const { user, games, playSound } = useGame();
-  const [displayedXp, setDisplayedXp] = useState(user.xp);
+  const [displayedXp, setDisplayedXp] = useState(user?.xp || 0);
 
   // Animate XP counter
   useEffect(() => {
+    if (!user) return;
     if (displayedXp < user.xp) {
       const timer = setTimeout(() => setDisplayedXp(prev => prev + 1), 20);
       return () => clearTimeout(timer);
     } else if (displayedXp > user.xp) {
       setDisplayedXp(user.xp);
     }
-  }, [user.xp, displayedXp]);
+  }, [user?.xp, displayedXp]);
+
+  if (!user) return null;
 
   const stats = [
-    { label: 'Games Today', value: 3, icon: Gamepad2, color: 'text-gaming-accent' },
-    { label: 'Weekly Playtime', value: '12.5h', icon: Clock, color: 'text-gaming-secondary' },
+    { label: 'Games Today', value: games.filter(g => g.date === new Date().toISOString().split('T')[0]).length, icon: Gamepad2, color: 'text-gaming-accent' },
+    { label: 'Total Playtime', value: `${Math.floor(games.reduce((acc, g) => acc + g.duration, 0) / 60)}h`, icon: Clock, color: 'text-gaming-secondary' },
     { label: 'Favorite Game', value: user.favoriteGame, icon: Star, color: 'text-gaming-warning' },
   ];
 

@@ -79,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
             {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
           </button>
           
-          {isLoggedIn && (
+          {isLoggedIn && user && (
             <div className="flex items-center gap-4 pl-4 border-l border-white/10">
               <div 
                 className="flex items-center gap-3 cursor-pointer group"

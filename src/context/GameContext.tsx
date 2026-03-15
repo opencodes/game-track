@@ -1,4 +1,24 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  signOut,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc,
+  orderBy,
+  getDoc,
+  getDocFromServer
+} from 'firebase/firestore';
+import { auth, db, googleProvider, handleFirestoreError, OperationType } from '../firebase';
 
 interface Game {
   id: string;
@@ -8,15 +28,18 @@ interface Game {
   xpEarned: number;
   levelAchieved?: number;
   remark?: string;
+  userId: string;
 }
 
 interface Achievement {
   id: string;
+  achievementId: string;
   name: string;
   description: string;
   icon: string;
   unlocked: boolean;
   date?: string;
+  userId: string;
 }
 
 interface User {
@@ -27,92 +50,179 @@ interface User {
   nextLevelXp: number;
   age: number;
   favoriteGame: string;
+  role?: string;
 }
 
 interface GameContextType {
-  user: User;
+  user: User | null;
   games: Game[];
   achievements: Achievement[];
   isMuted: boolean;
   toggleMute: () => void;
-  addGame: (name: string, duration: number, levelAchieved?: number, remark?: string) => void;
+  addGame: (name: string, duration: number, levelAchieved?: number, remark?: string) => Promise<void>;
   playSound: (type: 'hover' | 'click' | 'unlock' | 'levelUp' | 'notification') => void;
-  login: (username: string, avatar: string) => void;
-  logout: () => void;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
   isLoggedIn: boolean;
+  isAuthReady: boolean;
 }
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
-const INITIAL_USER: User = {
-  username: 'Player One',
+const INITIAL_USER_DATA: User = {
+  username: 'New Explorer',
   avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-  level: 5,
-  xp: 420,
+  level: 1,
+  xp: 0,
   nextLevelXp: 1000,
   age: 10,
-  favoriteGame: 'Minecraft'
+  favoriteGame: 'Minecraft',
+  role: 'client'
 };
 
-const INITIAL_ACHIEVEMENTS: Achievement[] = [
-  { id: '1', name: 'First Game Played', description: 'Log your first gaming session', icon: '🎮', unlocked: true, date: '2024-03-10' },
-  { id: '2', name: '5 Hours Played', description: 'Reach 300 minutes of total playtime', icon: '⏳', unlocked: false },
-  { id: '3', name: 'Level Up', description: 'Reach level 2 for the first time', icon: '⭐', unlocked: true, date: '2024-03-12' },
-  { id: '4', name: 'Top Player', description: 'Reach rank 1 on the leaderboard', icon: '🏆', unlocked: false },
-  { id: '5', name: 'Marathon Gamer', description: 'Play for 2 hours in one session', icon: '🔥', unlocked: false },
-];
-
-const INITIAL_GAMES: Game[] = [
-  { id: '1', name: 'Minecraft', duration: 45, date: '2024-03-14', xpEarned: 50 },
-  { id: '2', name: 'Roblox', duration: 30, date: '2024-03-14', xpEarned: 35 },
-  { id: '3', name: 'Fortnite', duration: 20, date: '2024-03-13', xpEarned: 25 },
+const INITIAL_ACHIEVEMENTS_TEMPLATES = [
+  { achievementId: '1', name: 'First Game Played', description: 'Log your first gaming session', icon: '🎮' },
+  { achievementId: '2', name: '5 Hours Played', description: 'Reach 300 minutes of total playtime', icon: '⏳' },
+  { achievementId: '3', name: 'Level Up', description: 'Reach level 2 for the first time', icon: '⭐' },
+  { achievementId: '4', name: 'Top Player', description: 'Reach rank 1 on the leaderboard', icon: '🏆' },
+  { achievementId: '5', name: 'Marathon Gamer', description: 'Play for 2 hours in one session', icon: '🔥' },
 ];
 
 export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User>(INITIAL_USER);
-  const [games, setGames] = useState<Game[]>(INITIAL_GAMES);
-  const [achievements, setAchievements] = useState<Achievement[]>(INITIAL_ACHIEVEMENTS);
+  const [user, setUser] = useState<User | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   // Sound system
   const playSound = useCallback((type: 'hover' | 'click' | 'unlock' | 'levelUp' | 'notification') => {
     if (isMuted) return;
     
     const sounds: Record<string, string> = {
-      hover: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3', // Soft digital click
-      click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3', // Confirmation
-      unlock: 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3', // Celebratory
-      levelUp: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3', // Dramatic power-up
-      notification: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3', // Notification
+      hover: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
+      click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
+      unlock: 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3',
+      levelUp: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3',
+      notification: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3',
     };
 
     const audio = new Audio(sounds[type]);
     audio.volume = 0.2;
-    audio.play().catch(() => {}); // Ignore errors if browser blocks autoplay
+    audio.play().catch(() => {});
   }, [isMuted]);
+
+  // Validate connection to Firestore
+  useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration.");
+        }
+      }
+    };
+    testConnection();
+  }, []);
+
+  // Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        setIsLoggedIn(true);
+        // Ensure user document exists
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        try {
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              ...INITIAL_USER_DATA,
+              username: firebaseUser.displayName || INITIAL_USER_DATA.username,
+              avatar: firebaseUser.photoURL || INITIAL_USER_DATA.avatar,
+            });
+          }
+        } catch (error) {
+          handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}`);
+        }
+      } else {
+        setIsLoggedIn(false);
+        setUser(null);
+        setGames([]);
+        setAchievements([]);
+      }
+      setIsAuthReady(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Data Listeners
+  useEffect(() => {
+    if (!isLoggedIn || !auth.currentUser) return;
+
+    const uid = auth.currentUser.uid;
+
+    // User Profile Listener
+    const unsubUser = onSnapshot(doc(db, 'users', uid), (doc) => {
+      if (doc.exists()) {
+        setUser(doc.data() as User);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${uid}`));
+
+    // Games Listener
+    const qGames = query(
+      collection(db, 'games'), 
+      where('userId', '==', uid),
+      orderBy('date', 'desc')
+    );
+    const unsubGames = onSnapshot(qGames, (snapshot) => {
+      const gamesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
+      setGames(gamesList);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'games'));
+
+    // Achievements Listener
+    const qAchievements = query(
+      collection(db, 'achievements'), 
+      where('userId', '==', uid)
+    );
+    const unsubAchievements = onSnapshot(qAchievements, (snapshot) => {
+      const achievementsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Achievement));
+      setAchievements(achievementsList);
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'achievements'));
+
+    return () => {
+      unsubUser();
+      unsubGames();
+      unsubAchievements();
+    };
+  }, [isLoggedIn]);
 
   const toggleMute = () => setIsMuted(!isMuted);
 
-  const addGame = (name: string, duration: number, levelAchieved?: number, remark?: string) => {
-    const xpEarned = Math.floor(duration * 1.5);
-    const newGame: Game = {
-      id: Date.now().toString(),
-      name,
-      duration,
-      date: new Date().toISOString().split('T')[0],
-      xpEarned,
-      levelAchieved,
-      remark
-    };
+  const addGame = async (name: string, duration: number, levelAchieved?: number, remark?: string) => {
+    if (!auth.currentUser || !user) return;
 
-    setGames(prev => [newGame, ...prev]);
-    
-    // Update User XP and Level
-    setUser(prev => {
-      let newXp = prev.xp + xpEarned;
-      let newLevel = prev.level;
-      let newNextLevelXp = prev.nextLevelXp;
+    const xpEarned = Math.floor(duration * 1.5);
+    const uid = auth.currentUser.uid;
+
+    try {
+      // Add Game Session
+      await addDoc(collection(db, 'games'), {
+        name,
+        duration,
+        date: new Date().toISOString().split('T')[0],
+        xpEarned,
+        levelAchieved,
+        remark,
+        userId: uid
+      });
+
+      // Update User XP and Level
+      let newXp = user.xp + xpEarned;
+      let newLevel = user.level;
+      let newNextLevelXp = user.nextLevelXp;
 
       if (newXp >= newNextLevelXp) {
         newLevel += 1;
@@ -123,64 +233,104 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         playSound('notification');
       }
 
-      return { ...prev, xp: newXp, level: newLevel, nextLevelXp: newNextLevelXp };
-    });
+      await updateDoc(doc(db, 'users', uid), {
+        xp: newXp,
+        level: newLevel,
+        nextLevelXp: newNextLevelXp
+      });
 
-    // Check for achievements
-    const totalPlaytime = games.reduce((acc, g) => acc + g.duration, 0) + duration;
-    if (totalPlaytime >= 300) {
-      unlockAchievement('2');
+      // Check for achievements (simplified logic)
+      const totalPlaytime = games.reduce((acc, g) => acc + g.duration, 0) + duration;
+      if (totalPlaytime >= 300) {
+        await unlockAchievement('2');
+      }
+      if (newLevel >= 2) {
+        await unlockAchievement('3');
+      }
+      if (games.length === 0) {
+        await unlockAchievement('1');
+      }
+
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'games/users');
     }
   };
 
-  const unlockAchievement = (id: string) => {
-    setAchievements(prev => prev.map(ach => {
-      if (ach.id === id && !ach.unlocked) {
-        playSound('unlock');
-        return { ...ach, unlocked: true, date: new Date().toISOString().split('T')[0] };
-      }
-      return ach;
-    }));
-  };
+  const unlockAchievement = async (achievementId: string) => {
+    if (!auth.currentUser) return;
+    const uid = auth.currentUser.uid;
 
-  const login = (username: string, avatar: string) => {
-    setUser(prev => ({ ...prev, username, avatar }));
-    setIsLoggedIn(true);
-    playSound('click');
-  };
+    const existing = achievements.find(a => a.achievementId === achievementId);
+    if (existing) return;
 
-  const logout = () => {
-    setIsLoggedIn(false);
-    playSound('click');
-  };
+    const template = INITIAL_ACHIEVEMENTS_TEMPLATES.find(t => t.achievementId === achievementId);
+    if (!template) return;
 
-  // Simulated XP trickle
-  useEffect(() => {
-    if (!isLoggedIn) return;
-    const interval = setInterval(() => {
-      setUser(prev => {
-        const xpGain = 1;
-        let newXp = prev.xp + xpGain;
-        let newLevel = prev.level;
-        let newNextLevelXp = prev.nextLevelXp;
-
-        if (newXp >= newNextLevelXp) {
-          newLevel += 1;
-          newXp = 0;
-          newNextLevelXp = Math.floor(newNextLevelXp * 1.2);
-          playSound('levelUp');
-        }
-
-        return { ...prev, xp: newXp, level: newLevel, nextLevelXp: newNextLevelXp };
+    try {
+      await addDoc(collection(db, 'achievements'), {
+        ...template,
+        unlocked: true,
+        date: new Date().toISOString().split('T')[0],
+        userId: uid
       });
-    }, 5000);
+      playSound('unlock');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'achievements');
+    }
+  };
+
+  const login = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+      playSound('click');
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      playSound('click');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  // Simulated XP trickle (optional, keep it but update Firestore)
+  useEffect(() => {
+    if (!isLoggedIn || !user || !auth.currentUser) return;
+    const interval = setInterval(async () => {
+      const uid = auth.currentUser!.uid;
+      const xpGain = 1;
+      let newXp = user.xp + xpGain;
+      let newLevel = user.level;
+      let newNextLevelXp = user.nextLevelXp;
+
+      if (newXp >= newNextLevelXp) {
+        newLevel += 1;
+        newXp = 0;
+        newNextLevelXp = Math.floor(newNextLevelXp * 1.2);
+        playSound('levelUp');
+      }
+
+      try {
+        await updateDoc(doc(db, 'users', uid), {
+          xp: newXp,
+          level: newLevel,
+          nextLevelXp: newNextLevelXp
+        });
+      } catch (error) {
+        // Silent fail for trickle
+      }
+    }, 10000); // Slower trickle for cloud sync
 
     return () => clearInterval(interval);
-  }, [isLoggedIn, playSound]);
+  }, [isLoggedIn, user?.xp]);
 
   return (
     <GameContext.Provider value={{ 
-      user, games, achievements, isMuted, toggleMute, addGame, playSound, login, logout, isLoggedIn 
+      user, games, achievements, isMuted, toggleMute, addGame, playSound, login, logout, isLoggedIn, isAuthReady 
     }}>
       {children}
     </GameContext.Provider>

@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "The gaming profile of the player",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Display name of the player" },
+        "avatar": { "type": "string", "description": "URL to the player's avatar image" },
+        "level": { "type": "integer", "description": "Current player level" },
+        "xp": { "type": "integer", "description": "Current experience points" },
+        "nextLevelXp": { "type": "integer", "description": "XP required for the next level" },
+        "age": { "type": "integer", "description": "Age of the player" },
+        "favoriteGame": { "type": "string", "description": "The player's favorite game" }
+      },
+      "required": ["username", "avatar", "level", "xp", "nextLevelXp"]
+    },
+    "Game": {
+      "title": "Game Session",
+      "description": "A logged gaming session",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the game played" },
+        "duration": { "type": "integer", "description": "Duration in minutes" },
+        "date": { "type": "string", "format": "date", "description": "Date of the session" },
+        "xpEarned": { "type": "integer", "description": "XP earned from this session" },
+        "levelAchieved": { "type": "integer", "description": "Optional level reached in the game" },
+        "remark": { "type": "string", "description": "Optional notes about the session" },
+        "userId": { "type": "string", "description": "The UID of the player who logged this session" }
+      },
+      "required": ["name", "duration", "date", "xpEarned", "userId"]
+    },
+    "Achievement": {
+      "title": "Achievement",
+      "description": "A player achievement",
+      "type": "object",
+      "properties": {
+        "achievementId": { "type": "string", "description": "The unique ID of the achievement template" },
+        "name": { "type": "string", "description": "Name of the achievement" },
+        "description": { "type": "string", "description": "How to unlock it" },
+        "icon": { "type": "string", "description": "Icon representation" },
+        "unlocked": { "type": "boolean", "description": "Whether it is unlocked" },
+        "date": { "type": "string", "format": "date", "description": "Date unlocked" },
+        "userId": { "type": "string", "description": "The UID of the player" }
+      },
+      "required": ["achievementId", "name", "unlocked", "userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/games/{gameId}": {
+      "schema": "Game",
+      "description": "Collection of all game sessions"
+    },
+    "/achievements/{achievementId}": {
+      "schema": "Achievement",
+      "description": "Collection of all unlocked achievements"
+    }
+  }
+}

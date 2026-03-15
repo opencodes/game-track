@@ -1,19 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useGame } from '../context/GameContext';
 import { User, Settings, Shield, Star, Edit2, Save, Sparkles, LogOut } from 'lucide-react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 
 export const Profile: React.FC = () => {
-  const { user, playSound, logout } = useGame();
+  const { user, games, achievements, playSound, logout } = useGame();
   const [isEditing, setIsEditing] = useState(false);
-  const [username, setUsername] = useState(user.username);
-  const [age, setAge] = useState(user.age.toString());
-  const [favoriteGame, setFavoriteGame] = useState(user.favoriteGame);
+  const [username, setUsername] = useState(user?.username || '');
+  const [age, setAge] = useState(user?.age.toString() || '');
+  const [favoriteGame, setFavoriteGame] = useState(user?.favoriteGame || '');
 
-  const handleSave = () => {
+  useEffect(() => {
+    if (user) {
+      setUsername(user.username);
+      setAge(user.age.toString());
+      setFavoriteGame(user.favoriteGame);
+    }
+  }, [user]);
+
+  if (!user) return null;
+
+  const handleSave = async () => {
+    if (!auth.currentUser) return;
     setIsEditing(false);
     playSound('click');
-    // In a real app, we'd update the context here
+    
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        username,
+        age: parseInt(age),
+        favoriteGame
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+    }
   };
 
   const handleLogout = () => {
@@ -54,11 +76,11 @@ export const Profile: React.FC = () => {
             
             <div className="grid grid-cols-2 gap-4 w-full">
               <div className="text-center">
-                <p className="text-lg font-display font-bold">12</p>
+                <p className="text-lg font-display font-bold">{achievements.length}</p>
                 <p className="text-[10px] text-white/40 uppercase font-bold">Achievements</p>
               </div>
               <div className="text-center">
-                <p className="text-lg font-display font-bold">#42</p>
+                <p className="text-lg font-display font-bold">#{Math.floor(Math.random() * 100) + 1}</p>
                 <p className="text-[10px] text-white/40 uppercase font-bold">Global Rank</p>
               </div>
             </div>
@@ -157,19 +179,19 @@ export const Profile: React.FC = () => {
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                    <p className="text-2xl font-display font-bold">156</p>
+                    <p className="text-2xl font-display font-bold">{games.length}</p>
                     <p className="text-[10px] text-white/40 uppercase font-bold">Sessions</p>
                   </div>
                   <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                    <p className="text-2xl font-display font-bold">42h</p>
+                    <p className="text-2xl font-display font-bold">{Math.floor(games.reduce((acc, g) => acc + g.duration, 0) / 60)}h</p>
                     <p className="text-[10px] text-white/40 uppercase font-bold">Playtime</p>
                   </div>
                   <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                    <p className="text-2xl font-display font-bold">8.5k</p>
+                    <p className="text-2xl font-display font-bold">{Math.floor((user.level - 1) * 1000 + user.xp)}</p>
                     <p className="text-[10px] text-white/40 uppercase font-bold">Total XP</p>
                   </div>
                   <div className="p-4 bg-white/5 rounded-xl border border-white/5">
-                    <p className="text-2xl font-display font-bold">12</p>
+                    <p className="text-2xl font-display font-bold">{achievements.length}</p>
                     <p className="text-[10px] text-white/40 uppercase font-bold">Badges</p>
                   </div>
                 </div>

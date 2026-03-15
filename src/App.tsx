@@ -15,10 +15,23 @@ import { Achievements } from './components/Achievements';
 import { Leaderboard } from './components/Leaderboard';
 import { Profile } from './components/Profile';
 import { AnimatePresence, motion } from 'motion/react';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { isLoggedIn, playSound } = useGame();
+  const { isLoggedIn, isAuthReady, user } = useGame();
   const [activeTab, setActiveTab] = useState('home');
+
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-gaming-accent animate-spin mx-auto mb-4" />
+          <p className="text-white/40 font-display font-bold uppercase tracking-widest text-xs">Initializing Neural Link...</p>
+        </div>
+      </div>
+    );
+  }
 
   const renderContent = () => {
     if (!isLoggedIn && activeTab !== 'home' && activeTab !== 'leaderboard') {
@@ -92,8 +105,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <GameProvider>
-      <AppContent />
-    </GameProvider>
+    <ErrorBoundary>
+      <GameProvider>
+        <AppContent />
+      </GameProvider>
+    </ErrorBoundary>
   );
 }
