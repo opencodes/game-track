@@ -6,13 +6,21 @@ import { User, Mail } from 'lucide-react';
 export const Login: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
   const { login, playSound } = useGame();
 
+  const [error, setError] = React.useState<string | null>(null);
+
   const handleGoogleLogin = async () => {
     playSound('click');
+    setError(null);
     try {
       await login();
       onLogin();
-    } catch (error) {
-      console.error('Login failed:', error);
+    } catch (err: any) {
+      console.error('Login failed:', err);
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('This domain is not authorized for Firebase Auth. Please add it to Authorized Domains in the Firebase Console.');
+      } else {
+        setError('Login failed. Please try again.');
+      }
     }
   };
 
@@ -30,6 +38,12 @@ export const Login: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           <h2 className="text-2xl font-display font-bold neon-glow uppercase">Initialize Profile</h2>
           <p className="text-white/60 text-sm mt-2">Connect your account to save progress</p>
         </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-gaming-danger/10 border border-gaming-danger/40 rounded-lg">
+            <p className="text-xs text-gaming-danger font-bold text-center">{error}</p>
+          </div>
+        )}
 
         <div className="space-y-6">
           <button

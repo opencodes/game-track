@@ -113,18 +113,41 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     audio.play().catch(() => {});
   }, [isMuted]);
 
-  // Validate connection to Firestore
-  useEffect(() => {
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
+  // Data Fetching
+  const fetchUserData = useCallback(async (uid: string) => {
+    try {
+      const res = await fetch(`/api/users/${uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
       }
-    };
-    testConnection();
+    } catch (error) {
+      console.error('Failed to fetch user data:', error);
+    }
+  }, []);
+
+  const fetchGames = useCallback(async (uid: string) => {
+    try {
+      const res = await fetch(`/api/games/${uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setGames(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch games:', error);
+    }
+  }, []);
+
+  const fetchAchievements = useCallback(async (uid: string) => {
+    try {
+      const res = await fetch(`/api/achievements/${uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAchievements(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch achievements:', error);
+    }
   }, []);
 
   // Auth Listener
@@ -132,19 +155,29 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setIsLoggedIn(true);
-        // Ensure user document exists
-        const userRef = doc(db, 'users', firebaseUser.uid);
+        const uid = firebaseUser.uid;
+        
+        // Sync user to MySQL
         try {
-          const userSnap = await getDoc(userRef);
-          if (!userSnap.exists()) {
-            await setDoc(userRef, {
-              ...INITIAL_USER_DATA,
-              username: firebaseUser.displayName || INITIAL_USER_DATA.username,
-              avatar: firebaseUser.photoURL || INITIAL_USER_DATA.avatar,
+          const checkRes = await fetch(`/api/users/${uid}`);
+          if (!checkRes.ok) {
+            // Create user if not exists
+            await fetch('/api/users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ...INITIAL_USER_DATA,
+                uid,
+                username: firebaseUser.displayName || INITIAL_USER_DATA.username,
+                avatar: firebaseUser.photoURL || INITIAL_USER_DATA.avatar,
+              })
             });
           }
+          await fetchUserData(uid);
+          await fetchGames(uid);
+          await fetchAchievements(uid);
         } catch (error) {
-          handleFirestoreError(error, OperationType.WRITE, `users/${firebaseUser.uid}`);
+          console.error('Auth sync failed:', error);
         }
       } else {
         setIsLoggedIn(false);
@@ -156,48 +189,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     return () => unsubscribe();
-  }, []);
-
-  // Data Listeners
-  useEffect(() => {
-    if (!isLoggedIn || !auth.currentUser) return;
-
-    const uid = auth.currentUser.uid;
-
-    // User Profile Listener
-    const unsubUser = onSnapshot(doc(db, 'users', uid), (doc) => {
-      if (doc.exists()) {
-        setUser(doc.data() as User);
-      }
-    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${uid}`));
-
-    // Games Listener
-    const qGames = query(
-      collection(db, 'games'), 
-      where('userId', '==', uid),
-      orderBy('date', 'desc')
-    );
-    const unsubGames = onSnapshot(qGames, (snapshot) => {
-      const gamesList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
-      setGames(gamesList);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'games'));
-
-    // Achievements Listener
-    const qAchievements = query(
-      collection(db, 'achievements'), 
-      where('userId', '==', uid)
-    );
-    const unsubAchievements = onSnapshot(qAchievements, (snapshot) => {
-      const achievementsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Achievement));
-      setAchievements(achievementsList);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'achievements'));
-
-    return () => {
-      unsubUser();
-      unsubGames();
-      unsubAchievements();
-    };
-  }, [isLoggedIn]);
+  }, [fetchUserData, fetchGames, fetchAchievements]);
 
   const toggleMute = () => setIsMuted(!isMuted);
 
@@ -208,18 +200,22 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const uid = auth.currentUser.uid;
 
     try {
-      // Add Game Session
-      await addDoc(collection(db, 'games'), {
-        name,
-        duration,
-        date: new Date().toISOString().split('T')[0],
-        xpEarned,
-        levelAchieved,
-        remark,
-        userId: uid
+      // Add Game Session to MySQL
+      await fetch('/api/games', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: uid,
+          name,
+          duration,
+          date: new Date().toISOString().split('T')[0],
+          xpEarned,
+          levelAchieved,
+          remark
+        })
       });
 
-      // Update User XP and Level
+      // Update User XP and Level in MySQL
       let newXp = user.xp + xpEarned;
       let newLevel = user.level;
       let newNextLevelXp = user.nextLevelXp;
@@ -233,13 +229,21 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         playSound('notification');
       }
 
-      await updateDoc(doc(db, 'users', uid), {
-        xp: newXp,
-        level: newLevel,
-        nextLevelXp: newNextLevelXp
+      await fetch(`/api/users/${uid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          xp: newXp,
+          level: newLevel,
+          nextLevelXp: newNextLevelXp
+        })
       });
 
-      // Check for achievements (simplified logic)
+      // Refresh local state
+      await fetchUserData(uid);
+      await fetchGames(uid);
+
+      // Check for achievements
       const totalPlaytime = games.reduce((acc, g) => acc + g.duration, 0) + duration;
       if (totalPlaytime >= 300) {
         await unlockAchievement('2');
@@ -252,7 +256,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'games/users');
+      console.error('Add game failed:', error);
     }
   };
 
@@ -267,15 +271,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!template) return;
 
     try {
-      await addDoc(collection(db, 'achievements'), {
-        ...template,
-        unlocked: true,
-        date: new Date().toISOString().split('T')[0],
-        userId: uid
+      await fetch('/api/achievements', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: uid,
+          ...template,
+          unlocked: true,
+          date: new Date().toISOString().split('T')[0]
+        })
       });
+      await fetchAchievements(uid);
       playSound('unlock');
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'achievements');
+      console.error('Unlock achievement failed:', error);
     }
   };
 

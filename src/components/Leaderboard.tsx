@@ -5,57 +5,53 @@ import { Trophy, Medal, ArrowUp, ArrowDown, Minus, Sparkles } from 'lucide-react
 
 export const Leaderboard: React.FC = () => {
   const { playSound } = useGame();
+  const [players, setPlayers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const topPlayers = [
-    { rank: 2, username: 'ShadowNinja', level: 42, xp: 12500, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Shadow', color: 'bg-slate-400' },
-    { rank: 1, username: 'CyberQueen', level: 50, xp: 18900, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Queen', color: 'bg-yellow-400' },
-    { rank: 3, username: 'PixelKnight', level: 38, xp: 9800, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Knight', color: 'bg-amber-600' },
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        const res = await fetch('/api/leaderboard');
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((p: any, i: number) => ({
+            ...p,
+            rank: i + 1,
+            trend: 'stable',
+            games: Math.floor(Math.random() * 100) + 50,
+            lastChange: null
+          }));
+          setPlayers(mapped);
+        }
+      } catch (error) {
+        console.error('Failed to fetch leaderboard:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+    const interval = setInterval(fetchLeaderboard, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 pt-28 pb-12 flex items-center justify-center min-h-[60vh]">
+        <div className="text-gaming-accent animate-pulse font-display font-bold text-xl uppercase tracking-widest">
+          Syncing with Global Database...
+        </div>
+      </div>
+    );
+  }
+
+  const topThree = [
+    players[1] || { rank: 2, username: '---', level: 0, xp: 0, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=2' },
+    players[0] || { rank: 1, username: '---', level: 0, xp: 0, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=1' },
+    players[2] || { rank: 3, username: '---', level: 0, xp: 0, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=3' },
   ];
 
-  const [players, setPlayers] = useState([
-    { rank: 4, username: 'GamerX', level: 35, xp: 8500, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=X', trend: 'up', games: 156, lastChange: null as 'up' | 'down' | null },
-    { rank: 5, username: 'NeonBlast', level: 32, xp: 7200, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Neon', trend: 'down', games: 142, lastChange: null as 'up' | 'down' | null },
-    { rank: 6, username: 'VoidWalker', level: 30, xp: 6800, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Void', trend: 'stable', games: 128, lastChange: null as 'up' | 'down' | null },
-    { rank: 7, username: 'StarDust', level: 28, xp: 5900, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Star', trend: 'up', games: 115, lastChange: null as 'up' | 'down' | null },
-    { rank: 8, username: 'FrostByte', level: 25, xp: 5100, avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Frost', trend: 'stable', games: 98, lastChange: null as 'up' | 'down' | null },
-  ]);
-
-  // Simulate rank changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPlayers(prev => {
-        const next = [...prev];
-        // Pick two adjacent players to swap
-        const idx = Math.floor(Math.random() * (next.length - 1));
-        
-        // Swap ranks
-        const tempRank = next[idx].rank;
-        next[idx].rank = next[idx+1].rank;
-        next[idx+1].rank = tempRank;
-
-        // Set change indicators
-        next[idx].lastChange = next[idx].rank < tempRank ? 'up' : 'down';
-        next[idx+1].lastChange = next[idx+1].rank < next[idx].rank ? 'up' : 'down'; // This logic is slightly flawed but good for demo
-
-        // Simple swap for demo: idx moves up, idx+1 moves down
-        next[idx].lastChange = 'up';
-        next[idx+1].lastChange = 'down';
-
-        playSound('notification');
-
-        // Sort by rank
-        return next.sort((a, b) => a.rank - b.rank);
-      });
-
-      // Clear indicators after 3 seconds
-      setTimeout(() => {
-        setPlayers(prev => prev.map(p => ({ ...p, lastChange: null })));
-      }, 3000);
-
-    }, 8000);
-
-    return () => clearInterval(interval);
-  }, [playSound]);
+  const remainingPlayers = players.slice(3);
 
   return (
     <div className="max-w-7xl mx-auto px-4 pt-28 pb-12">
@@ -67,11 +63,11 @@ export const Leaderboard: React.FC = () => {
       {/* 3D Podium */}
       <div className="flex flex-col md:flex-row items-end justify-center gap-4 mb-20 px-4">
         {/* Rank 2 */}
-        <PodiumBlock player={topPlayers[0]} height="h-48" delay={0.2} />
+        <PodiumBlock player={topThree[0]} height="h-48" delay={0.2} />
         {/* Rank 1 */}
-        <PodiumBlock player={topPlayers[1]} height="h-64" delay={0} isGold />
+        <PodiumBlock player={topThree[1]} height="h-64" delay={0} isGold />
         {/* Rank 3 */}
-        <PodiumBlock player={topPlayers[2]} height="h-36" delay={0.4} />
+        <PodiumBlock player={topThree[2]} height="h-36" delay={0.4} />
       </div>
 
       {/* Leaderboard Table */}
@@ -87,7 +83,7 @@ export const Leaderboard: React.FC = () => {
 
         <div className="divide-y divide-white/5">
           <AnimatePresence mode="popLayout">
-            {players.map((player, i) => (
+            {remainingPlayers.map((player, i) => (
               <motion.div
                 key={player.username}
                 layout
