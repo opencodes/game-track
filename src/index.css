@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-gaming-bg: #050508;
+  --color-gaming-card: rgba(15, 15, 25, 0.7);
+  --color-gaming-accent: #00f2ff;
+  --color-gaming-secondary: #7000ff;
+  --color-gaming-success: #00ff88;
+  --color-gaming-warning: #ffcc00;
+  --color-gaming-danger: #ff0055;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-gaming-bg text-white font-sans overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .hud-panel {
+    @apply bg-gaming-card backdrop-blur-md border border-white/10 rounded-xl shadow-[0_0_20px_rgba(0,242,255,0.1)];
+  }
+  
+  .hud-border {
+    @apply relative;
+  }
+  
+  .hud-border::before {
+    content: '';
+    @apply absolute -top-px -left-px w-4 h-4 border-t-2 border-l-2 border-gaming-accent rounded-tl-sm;
+  }
+  
+  .hud-border::after {
+    content: '';
+    @apply absolute -bottom-px -right-px w-4 h-4 border-b-2 border-r-2 border-gaming-accent rounded-br-sm;
+  }
+
+  .neon-glow {
+    text-shadow: 0 0 10px rgba(0, 242, 255, 0.5), 0 0 20px rgba(0, 242, 255, 0.3);
+  }
+
+  .glass-button {
+    @apply relative overflow-hidden bg-white/5 hover:bg-white/10 border border-white/20 transition-all duration-300 px-6 py-3 rounded-lg flex items-center justify-center gap-2;
+  }
+
+  .glass-button::after {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full hover:animate-[shimmer_2s_infinite];
+  }
+}
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
