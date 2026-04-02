@@ -8,7 +8,7 @@ abstract class Model
 {
     protected PDO $db;
     protected string $table;
-    protected string $primaryKey = 'uid';
+    protected string $primaryKey = 'id';
 
     public function __construct()
     {

@@ -25,14 +25,14 @@ export const Home: React.FC<{ onStart: () => void; onViewLeaderboard: () => void
           </div>
           
           <h1 className="text-5xl md:text-7xl font-display font-black leading-tight mb-6">
-            TRACK YOUR <br />
+            LEVEL UP YOUR <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-gaming-accent to-gaming-secondary neon-glow">
-              GAMING JOURNEY
+              PIXEL PROFILE
             </span>
           </h1>
           
           <p className="text-white/60 text-lg md:text-xl max-w-lg mb-10 leading-relaxed">
-            The ultimate command center for young legends. Play games, earn XP, unlock holographic achievements, and climb the global leaderboard.
+            Your personal gaming dashboard to monitor stats, track XP, unlock achievements, and climb the leaderboard.
           </p>
 
           <div className="flex flex-wrap gap-4">

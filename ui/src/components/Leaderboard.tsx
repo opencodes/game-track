@@ -59,7 +59,7 @@ export const Leaderboard: React.FC = () => {
     <div className="max-w-7xl mx-auto px-4 pt-28 pb-12">
       <div className="text-center mb-16">
         <h2 className="text-4xl font-display font-black neon-glow uppercase tracking-tight mb-4">Global Leaderboard</h2>
-        <p className="text-white/60">The elite ranks of the GAMELEVEL universe. Can you reach the summit?</p>
+        <p className="text-white/60">The elite ranks of the PixelProfile universe. Can you reach the summit?</p>
       </div>
 
       {/* 3D Podium */}

@@ -9,7 +9,7 @@ class JWT
 {
     private static function getSecret(): string
     {
-        return $_ENV['JWT_SECRET'] ?? 'dev-secret-key-please-change-32chars';
+        return $_ENV['JWT_SECRET'] ?? 'your-secret-key';
     }
 
     private static function getExpiry(): int

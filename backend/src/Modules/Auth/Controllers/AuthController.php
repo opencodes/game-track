@@ -2,139 +2,106 @@
 
 namespace App\Modules\Auth\Controllers;
 
-use App\Core\Database;
-use App\Modules\GameTrack\Services\GameTrackSchema;
 use App\Modules\User\Models\User;
 use App\Modules\User\Models\UserDevice;
+use App\Modules\RBAC\Services\RBACService;
 use App\Utils\JWT;
 use App\Core\Response;
-use PDO;
 
 class AuthController
 {
     private User $userModel;
     private UserDevice $userDeviceModel;
+    private RBACService $rbacService;
 
     public function __construct()
     {
         $this->userModel = new User();
         $this->userDeviceModel = new UserDevice();
+        $this->rbacService = new RBACService();
     }
 
     public function register(): void
     {
-        $data = json_decode(file_get_contents('php://input'), true) ?? [];
+        $data = json_decode(file_get_contents('php://input'), true);
 
-        $username = trim($data['username'] ?? '');
-        $email = trim($data['email'] ?? '');
-        $displayName = trim($data['displayName'] ?? '') ?: $username;
-        $favoriteGame = $data['favoriteGame'] ?? null;
-        $avatar = $data['avatar'] ?? null;
-        $password = (string) ($data['password'] ?? '');
-        $dob = $data['dob'] ?? null;
-
-        if ($username === '' || $email === '' || $password === '') {
-            Response::error('username, email, and password are required', 400);
+        if (!isset($data['email']) || !isset($data['password']) || !isset($data['full_name'])) {
+            Response::error('Email, password, and full name are required', 400);
         }
 
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             Response::error('Invalid email format', 400);
         }
 
-        if (strlen($password) < 6) {
+        if (strlen($data['password']) < 6) {
             Response::error('Password must be at least 6 characters', 400);
         }
 
-        $db = Database::getConnection();
-        GameTrackSchema::ensure($db);
-
-        $stmt = $db->prepare('SELECT uid FROM users WHERE username = ? OR email = ?');
-        $stmt->execute([$username, $email]);
-        if ($stmt->fetch(PDO::FETCH_ASSOC)) {
-            Response::error('Username or email already exists', 409);
+        $existingUser = $this->userModel->findByEmail($data['email']);
+        if ($existingUser) {
+            Response::error('Email already registered', 409);
         }
 
-        $uid = bin2hex(random_bytes(16));
-        $passwordHash = password_hash($password, PASSWORD_BCRYPT);
+        $passwordHash = hash('sha256', $data['password']);
 
-        $age = null;
-        if ($dob) {
-            $age = date_diff(date_create($dob), date_create('today'))->y;
-        }
-
-        $stmt = $db->prepare(
-            'INSERT INTO users
-            (uid, username, email, displayName, password, avatar, dob, age, favoriteGame, level, xp, nextLevelXp, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-
-        $stmt->execute([
-            $uid,
-            $username,
-            $email,
-            $displayName,
-            $passwordHash,
-            $avatar,
-            $dob,
-            $age,
-            $favoriteGame,
-            1,
-            0,
-            1000,
-            'client',
+        $userId = $this->userModel->createUser([
+            'email' => $data['email'],
+            'password' => $passwordHash,
+            'full_name' => $data['full_name'],
+            'role' => 'user'
         ]);
 
-        $token = JWT::encode(['userId' => $uid, 'email' => $email]);
+        $user = $this->userModel->findById($userId);
+        unset($user['password']);
+
+        $user['rbac_roles'] = $this->rbacService->getRolesForUser($user['id']);
+        $user['rbac_permissions'] = $this->rbacService->getPermissionsForUser($user['id']);
+
+        $token = JWT::encode(['userId' => $user['id'], 'email' => $user['email']]);
 
         Response::success([
-            'user' => [
-                'uid' => $uid,
-                'username' => $username,
-                'email' => $email,
-                'displayName' => $displayName,
-                'avatar' => $avatar,
-                'dob' => $dob,
-                'age' => $age,
-                'favoriteGame' => $favoriteGame,
-                'level' => 1,
-                'xp' => 0,
-                'nextLevelXp' => 1000,
-                'role' => 'client',
-            ],
-            'token' => $token,
+            'user' => $user,
+            'token' => $token
         ], 'User registered successfully', 201);
     }
 
     public function login(): void
     {
-        $data = json_decode(file_get_contents('php://input'), true) ?? [];
-        error_log(''. $data['login']);
-        $login = trim($data['email'] ?? $data['login'] ?? $data['username'] ?? '');
-        $password = (string) ($data['password'] ?? '');
+        $data = json_decode(file_get_contents('php://input'), true);
 
-        if ($login === '' || $password === '') {
-            Response::error('Login and password are required', 400);
+        if (!isset($data['email']) || !isset($data['password'])) {
+            Response::error('Email and password are required', 400);
         }
 
-        $db = Database::getConnection();
-        GameTrackSchema::ensure($db);
-
-        $stmt = $db->prepare(
-            'SELECT uid, username, email, displayName, password, avatar, level, xp, nextLevelXp, role
-             FROM users
-             WHERE username = ? OR email = ?
-             LIMIT 1'
-        );
-        $stmt->execute([$login, $login]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$user || !password_verify($password, $user['password'])) {
+        $user = $this->userModel->findByEmail($data['email']);
+        if (!$user) {
             Response::error('Invalid credentials', 401);
         }
 
-        unset($user['password']);
+        $rawPassword = $data['password'];
+        $sha2Password = hash('sha256', $rawPassword);
 
-        $token = JWT::encode(['userId' => $user['uid'], 'email' => $user['email']]);
+        $isValid = $this->userModel->verifyPassword($rawPassword, $user['password'])
+            || $this->userModel->verifyPassword($sha2Password, $user['password']);
+
+        if (!$isValid) {
+            Response::error('Invalid credentials', 401);
+        }
+
+        // Track first and repeat logins per device; multiple devices per user are allowed.
+        if (isset($data['device']) && is_array($data['device'])) {
+            try {
+                $this->userDeviceModel->upsertLoginDevice($user['id'], $data['device']);
+            } catch (\Throwable $e) {
+                // Device tracking should not block successful login.
+            }
+        }
+
+        unset($user['password']);
+        $user['rbac_roles'] = $this->rbacService->getRolesForUser($user['id']);
+        $user['rbac_permissions'] = $this->rbacService->getPermissionsForUser($user['id']);
+
+        $token = JWT::encode(['userId' => $user['id'], 'email' => $user['email']]);
 
         Response::success([
             'user' => $user,
@@ -150,6 +117,8 @@ class AuthController
         }
 
         unset($user['password']);
+        $user['rbac_roles'] = $this->rbacService->getRolesForUser($user['id']);
+        $user['rbac_permissions'] = $this->rbacService->getPermissionsForUser($user['id']);
         Response::success($user);
     }
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { useGame } from '../context/GameContext';
 import { Volume2, VolumeX, LayoutDashboard, Gamepad2, Trophy, Award, User, Home, LogOut } from 'lucide-react';
+import logo from '../assets/pixel-profile-logo.svg';
 
 interface NavbarProps {
   activeTab: string;
@@ -38,11 +39,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab }) => {
           className="flex items-center gap-2 cursor-pointer group"
           onClick={() => handleNavClick('home')}
         >
-          <div className="w-8 h-8 bg-gaming-accent rounded-sm rotate-45 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <Gamepad2 className="-rotate-45 text-black w-5 h-5" />
-          </div>
+          <img
+            src={logo}
+            alt="Pixel Profile logo"
+            className="w-8 h-8 object-contain group-hover:scale-110 transition-transform"
+          />
           <span className="font-display font-bold text-xl tracking-tighter neon-glow">
-            GAME<span className="text-gaming-accent">LEVEL</span>
+            Pixel<span className="text-gaming-accent">Profile</span>
           </span>
         </div>
 
